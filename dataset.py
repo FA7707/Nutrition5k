@@ -9,7 +9,7 @@ Expected directory layout under data_root:
     metadata/dish_metadata_cafe1.csv
     metadata/dish_metadata_cafe2.csv
     metadata/ingredients_metadata.csv
-    imagery/realsense_overhead/<dish_id>/rgb.png
+    realsense_overhead/<dish_id>/rgb.png
 """
 
 import os
@@ -134,7 +134,7 @@ class Nutrition5kDataset(Dataset):
     ):
         self.data_root = Path(data_root)
         self.split = split
-        self.imagery_dir = self.data_root / "imagery" / "realsense_overhead"
+        self.imagery_dir = self.data_root / "realsense_overhead"
         self.metadata_dir = self.data_root / "metadata"
 
         # Load split IDs
@@ -152,6 +152,12 @@ class Nutrition5kDataset(Dataset):
             if img_path.exists():
                 valid.append(row)
         self.metadata = pd.DataFrame(valid).reset_index(drop=True)
+
+        if len(self.metadata) == 0:
+            raise FileNotFoundError(
+                f"No images found in {self.imagery_dir}. "
+                f"Download images first using: download_dataset.ps1"
+            )
 
         # Label vocabulary (ingredient names -> indices)
         if label_vocab is not None:
