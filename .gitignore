@@ -9,6 +9,7 @@ build/
 # Data & checkpoints (large files)
 data/
 checkpoints/
+realsense_overhead/
 *.onnx
 *.pth
 
