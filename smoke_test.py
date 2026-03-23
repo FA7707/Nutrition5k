@@ -79,7 +79,7 @@ def test_onnx_export():
     try:
         torch.onnx.export(
             model, dummy, onnx_path,
-            opset_version=17,
+            opset_version=18,
             input_names=["input"],
             output_names=["cls_logits", "nutrition"],
         )
@@ -123,6 +123,7 @@ def test_save_load_checkpoint():
         model2 = NutritionModel(num_classes=loaded["num_classes"], pretrained=False)
         model2.load_state_dict(loaded["model_state_dict"])
         model2.eval()
+        model.eval()
 
         dummy = torch.randn(1, 3, 224, 224)
         with torch.no_grad():

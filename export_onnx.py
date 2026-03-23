@@ -15,7 +15,7 @@ def parse_args():
     p = argparse.ArgumentParser(description="Export Nutrition5k model to ONNX")
     p.add_argument("--checkpoint", type=str, required=True, help="Path to .pth checkpoint")
     p.add_argument("--output", type=str, default="model.onnx", help="Output ONNX path")
-    p.add_argument("--opset", type=int, default=17, help="ONNX opset version")
+    p.add_argument("--opset", type=int, default=18, help="ONNX opset version")
     p.add_argument("--dynamic_batch", action="store_true",
                    help="Enable dynamic batch size axis")
     return p.parse_args()
