@@ -78,7 +78,8 @@ def load_ingredients_metadata(metadata_dir: str) -> pd.DataFrame:
     path = Path(metadata_dir) / "ingredients_metadata.csv"
     if not path.exists():
         return pd.DataFrame(columns=["ingr_id", "ingr_name"])
-    df = pd.read_csv(path, header=None, usecols=[0, 1], names=["ingr_id", "ingr_name"])
+    df = pd.read_csv(path, usecols=[0, 1], names=["ingr_name", "ingr_id"],
+                     header=0)
     return df.drop_duplicates(subset=["ingr_id"]).reset_index(drop=True)
 
 

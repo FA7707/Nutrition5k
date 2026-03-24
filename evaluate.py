@@ -11,7 +11,7 @@ import csv
 import torch
 from torch.utils.data import DataLoader
 
-from dataset import Nutrition5kDataset
+from dataset import Nutrition5kDataset, parse_dish_ingredients
 from model import NutritionModel
 
 
@@ -23,6 +23,8 @@ def parse_args():
     p.add_argument("--num_workers", type=int, default=4)
     p.add_argument("--threshold", type=float, default=0.3,
                    help="Sigmoid threshold for ingredient prediction")
+    p.add_argument("--top_k_ingredients", type=int, default=5,
+                   help="Number of top predicted ingredients to show")
     p.add_argument("--top_n", type=int, default=20,
                    help="Number of individual dish results to print")
     p.add_argument("--save_csv", type=str, default=None,
@@ -43,6 +45,11 @@ def main():
     model = NutritionModel(num_classes=num_classes, pretrained=False)
     model.load_state_dict(ckpt["model_state_dict"])
     model.eval()
+
+    # Load raw ingredient lists from metadata (ground truth food names)
+    from pathlib import Path
+    metadata_dir = str(Path(args.data_root) / "metadata")
+    raw_dish_ingredients = parse_dish_ingredients(metadata_dir)
 
     # Dataset (test split)
     test_ds = Nutrition5kDataset(
@@ -68,14 +75,20 @@ def main():
             probs = torch.sigmoid(cls_logits)
 
             for i in range(images.size(0)):
-                # Actual ingredients
-                actual_idxs = (ingr_labels[i] == 1).nonzero(as_tuple=True)[0]
-                actual_ingr = [idx_to_name.get(j.item(), "?") for j in actual_idxs]
+                # Actual ingredients — use raw metadata for reliable food names
+                actual_ingr = raw_dish_ingredients.get(dish_ids[i], [])
+                if not actual_ingr:
+                    # Fallback to multi-hot labels
+                    actual_idxs = (ingr_labels[i] == 1).nonzero(as_tuple=True)[0]
+                    actual_ingr = [idx_to_name.get(j.item(), "?") for j in actual_idxs]
 
-                # Predicted ingredients
-                pred_mask = probs[i] >= args.threshold
-                pred_idxs = pred_mask.nonzero(as_tuple=True)[0]
-                pred_ingr = [idx_to_name.get(j.item(), "?") for j in pred_idxs]
+                # Predicted ingredients — top-k by probability
+                top_vals, top_idxs = torch.topk(probs[i], min(args.top_k_ingredients, probs.size(1)))
+                pred_ingr = [
+                    idx_to_name.get(j.item(), "?")
+                    for j, v in zip(top_idxs, top_vals)
+                    if v.item() >= args.threshold
+                ]
 
                 # Nutrition values
                 actual_cal = nutrition[i][0].item()
