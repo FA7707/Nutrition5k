@@ -34,6 +34,10 @@ def parse_args():
     p.add_argument("--reg_weight", type=float, default=0.01,
                    help="Weight for regression loss")
     p.add_argument("--checkpoint_dir", type=str, default="checkpoints")
+    p.add_argument("--resume", type=str, default=None,
+                   help="Path to checkpoint to resume from (loads backbone + reg_head weights)")
+    p.add_argument("--finetune_cls_only", action="store_true",
+                   help="Only retrain classification head; freeze backbone and reg_head")
     p.add_argument("--num_workers", type=int, default=4)
     p.add_argument("--device", type=str, default=None,
                    help="Device (auto-detect if not set)")
@@ -163,15 +167,41 @@ def main():
 
     # Model
     model = NutritionModel(num_classes=num_classes, pretrained=True).to(device)
-    model.freeze_backbone()
+
+    # Resume from checkpoint (load backbone + reg_head, rebuild cls_head for new vocab)
+    if args.resume:
+        print(f"Resuming from {args.resume}")
+        ckpt = torch.load(args.resume, map_location="cpu", weights_only=False)
+        old_state = ckpt["model_state_dict"]
+        old_num_classes = ckpt["num_classes"]
+
+        # Load all weights except cls_head if num_classes changed
+        if old_num_classes != num_classes:
+            print(f"  num_classes changed ({old_num_classes} -> {num_classes}), "
+                  f"reinitializing cls_head")
+            filtered = {k: v for k, v in old_state.items()
+                        if not k.startswith("cls_head.")}
+            model.load_state_dict(filtered, strict=False)
+        else:
+            model.load_state_dict(old_state)
+
+    if args.finetune_cls_only:
+        # Freeze backbone and regression head, only train cls_head
+        print("Freezing backbone and reg_head — only training cls_head")
+        model.freeze_backbone()
+        for param in model.reg_head.parameters():
+            param.requires_grad = False
+        trainable_params = list(model.cls_head.parameters())
+    else:
+        model.freeze_backbone()
+        trainable_params = list(model.cls_head.parameters()) + list(model.reg_head.parameters())
 
     # Loss functions
     cls_criterion = nn.BCEWithLogitsLoss()
     reg_criterion = nn.MSELoss()
 
-    # Optimizer — differential learning rates
-    head_params = list(model.cls_head.parameters()) + list(model.reg_head.parameters())
-    optimizer = torch.optim.AdamW(head_params, lr=args.lr, weight_decay=args.weight_decay)
+    # Optimizer
+    optimizer = torch.optim.AdamW(trainable_params, lr=args.lr, weight_decay=args.weight_decay)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
 
     # Checkpointing
@@ -182,8 +212,8 @@ def main():
     history = []
 
     for epoch in range(1, args.epochs + 1):
-        # Unfreeze backbone after warmup
-        if epoch == args.freeze_epochs + 1:
+        # Unfreeze backbone after warmup (skip if only finetuning cls_head)
+        if epoch == args.freeze_epochs + 1 and not args.finetune_cls_only:
             print(f"Epoch {epoch}: unfreezing backbone")
             model.unfreeze_backbone()
             # Add backbone params to optimizer with lower LR
